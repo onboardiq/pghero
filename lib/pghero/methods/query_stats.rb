@@ -2,7 +2,7 @@ module PgHero
   module Methods
     module QueryStats
       def query_stats(historical: false, start_at: nil, end_at: nil, min_average_time: nil, min_calls: nil, **options)
-        current_query_stats = historical && end_at && end_at < Time.now ? [] : current_query_stats(options)
+        current_query_stats = historical && end_at && end_at < Time.now ? [] : current_query_stats(**options)
         historical_query_stats = historical && historical_query_stats_enabled? ? historical_query_stats(start_at: start_at, end_at: end_at, **options) : []
 
         query_stats = combine_query_stats((current_query_stats + historical_query_stats).group_by { |q| [q[:query_hash], q[:user]] })
@@ -166,14 +166,15 @@ module PgHero
         if query_stats_enabled?
           limit ||= 100
           sort ||= "total_minutes"
-          select_all <<-SQL
+          total_time = server_version_num >= 130000 ? "(total_plan_time + total_exec_time)" : "total_time"
+          query = <<-SQL
             WITH query_stats AS (
               SELECT
                 LEFT(query, 10000) AS query,
                 #{supports_query_hash? ? "queryid" : "md5(query)"} AS query_hash,
                 rolname AS user,
-                (total_time / 1000 / 60) AS total_minutes,
-                (total_time / calls) AS average_time,
+                (#{total_time} / 1000 / 60) AS total_minutes,
+                (#{total_time} / calls) AS average_time,
                 calls
               FROM
                 pg_stat_statements
@@ -200,6 +201,11 @@ module PgHero
               #{quote_table_name(sort)} DESC
             LIMIT #{limit.to_i}
           SQL
+
+          # we may be able to skip query_columns
+          # in more recent versions of Postgres
+          # as pg_stat_statements should be already normalized
+          select_all(query, query_columns: [:query])
         else
           raise NotEnabled, "Query stats not enabled"
         end
@@ -208,7 +214,7 @@ module PgHero
       def historical_query_stats(sort: nil, start_at: nil, end_at: nil, query_hash: nil)
         if historical_query_stats_enabled?
           sort ||= "total_minutes"
-          select_all_stats <<-SQL
+          query = <<-SQL
             WITH query_stats AS (
               SELECT
                 #{supports_query_hash? ? "query_hash" : "md5(query)"} AS query_hash,
@@ -244,6 +250,10 @@ module PgHero
               #{quote_table_name(sort)} DESC
             LIMIT 100
           SQL
+
+          # we can skip query_columns if all stored data is normalized
+          # for now, assume it's not
+          select_all_stats(query, query_columns: [:query, :explainable_query])
         else
           raise NotEnabled, "Historical query stats not enabled"
         end
