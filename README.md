@@ -2,6 +2,16 @@
 
 A performance dashboard for Postgres
 
+# Fountain Customizations
+
+* Only additive
+* Experimental and try these out at Fountain and then propose back upstream to main project
+
+### Current Customizations
+
+* Add index bloat percentage https://github.com/andyatkinson/pghero/pull/1
+* Add Scheduled Jobs view with pg_cron https://github.com/andyatkinson/pghero/pull/3
+
 [See it in action](https://pghero.dokkuapp.com/)
 
 [![Screenshot](https://pghero.dokkuapp.com/assets/pghero-ebb9c8e11434fd0e4ead81db88fe255b29cbbc845ec315b79e6c5e25015bc921.png)](https://pghero.dokkuapp.com/)
