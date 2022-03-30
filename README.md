@@ -5,7 +5,9 @@ A performance dashboard for Postgres
 # Fountain Customizations
 
 * Only additive
-* Experimental and try these out at Fountain and then propose back upstream to main project
+* Try out external PRs and consider them "experimental" at Fountain
+* Prefer changes that can be proposed back upstream to the main project
+* Do not block the project from receiving updates from upstream/main project, resolve merge conflicts, generally work in new areas and do not change core functionality
 
 ### Current Customizations
 
