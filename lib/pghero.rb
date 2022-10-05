@@ -54,15 +54,15 @@ module PgHero
 
   class << self
     extend Forwardable
-    def_delegators :primary_database, :access_key_id, :analyze, :analyze_tables, :autoindex, :autovacuum_danger,
+    def_delegators :primary_database, :aws_access_key_id, :analyze, :analyze_tables, :autoindex, :autovacuum_danger,
       :best_index, :blocked_queries, :connections, :connection_sources, :connection_states, :connection_stats,
-      :cpu_usage, :create_user, :database_size, :db_instance_identifier, :disable_query_stats, :drop_user,
+      :cpu_usage, :create_user, :database_size, :aws_db_instance_identifier, :disable_query_stats, :drop_user,
       :duplicate_indexes, :enable_query_stats, :explain, :historical_query_stats_enabled?, :index_caching,
       :index_hit_rate, :index_usage, :indexes, :invalid_constraints, :invalid_indexes, :kill, :kill_all, :kill_long_running_queries,
       :last_stats_reset_time, :long_running_queries, :maintenance_info, :missing_indexes, :query_stats,
       :query_stats_available?, :query_stats_enabled?, :query_stats_extension_enabled?, :query_stats_readable?,
-      :rds_stats, :read_iops_stats, :region, :relation_sizes, :replica?, :replication_lag, :replication_lag_stats,
-      :reset_query_stats, :reset_stats, :running_queries, :secret_access_key, :sequence_danger, :sequences, :settings,
+      :rds_stats, :read_iops_stats, :aws_region, :relation_sizes, :replica?, :replication_lag, :replication_lag_stats,
+      :reset_query_stats, :reset_stats, :running_queries, :aws_secret_access_key, :sequence_danger, :sequences, :settings,
       :slow_queries, :space_growth, :ssl_used?, :stats_connection, :suggested_indexes, :suggested_indexes_by_query,
       :suggested_indexes_enabled?, :system_stats_enabled?, :table_caching, :table_hit_rate, :table_stats,
       :total_connections, :transaction_id_danger, :unused_indexes, :unused_tables, :write_iops_stats,
@@ -88,12 +88,22 @@ module PgHero
       @password ||= config["password"] || ENV["PGHERO_PASSWORD"]
     end
 
+    # config pattern for https://github.com/ankane/pghero/issues/424
     def stats_database_url
-      @stats_database_url ||= config["stats_database_url"] || ENV["PGHERO_STATS_DATABASE_URL"]
+      @stats_database_url ||= (file_config || {})["stats_database_url"] || ENV["PGHERO_STATS_DATABASE_URL"]
+    end
+
+    def visualize_url
+      @visualize_url ||= config["visualize_url"] || ENV["PGHERO_VISUALIZE_URL"] || "https://tatiyants.com/pev/#/plans/new"
     end
 
     def config
-      @config ||= begin
+      @config ||= file_config || default_config
+    end
+
+    # private
+    def file_config
+      unless defined?(@file_config)
         require "erb"
         require "yaml"
 
@@ -104,40 +114,48 @@ module PgHero
         config = YAML.load(ERB.new(File.read(path)).result) if config_file_exists
         config ||= {}
 
-        if config[env]
-          config[env]
-        elsif config["databases"] # preferred format
-          config
-        elsif config_file_exists
-          raise "Invalid config file"
-        else
-          databases = {}
-
-          if !ENV["PGHERO_DATABASE_URL"] && spec_supported?
-            ActiveRecord::Base.configurations.configs_for(env_name: env, include_replicas_key => true).each do |db|
-              databases[db.send(spec_name_key)] = {"spec" => db.send(spec_name_key)}
-            end
+        @file_config =
+          if config[env]
+            config[env]
+          elsif config["databases"] # preferred format
+            config
+          elsif config_file_exists
+            raise "Invalid config file"
+          else
+            nil
           end
+      end
 
-          if databases.empty?
-            databases["primary"] = {
-              "url" => ENV["PGHERO_DATABASE_URL"] || connection_config(ActiveRecord::Base)
-            }
-          end
+      @file_config
+    end
 
-          if databases.size == 1
-            databases.values.first.merge!(
-              "db_instance_identifier" => ENV["PGHERO_DB_INSTANCE_IDENTIFIER"],
-              "gcp_database_id" => ENV["PGHERO_GCP_DATABASE_ID"],
-              "azure_resource_id" => ENV["PGHERO_AZURE_RESOURCE_ID"]
-            )
-          end
+    # private
+    def default_config
+      databases = {}
 
-          {
-            "databases" => databases
-          }
+      unless ENV["PGHERO_DATABASE_URL"]
+        ActiveRecord::Base.configurations.configs_for(env_name: env, include_replicas_key => true).each do |db|
+          databases[db.send(spec_name_key)] = {"spec" => db.send(spec_name_key)}
         end
       end
+
+      if databases.empty?
+        databases["primary"] = {
+          "url" => ENV["PGHERO_DATABASE_URL"] || connection_config(ActiveRecord::Base)
+        }
+      end
+
+      if databases.size == 1
+        databases.values.first.merge!(
+          "aws_db_instance_identifier" => ENV["PGHERO_DB_INSTANCE_IDENTIFIER"],
+          "gcp_database_id" => ENV["PGHERO_GCP_DATABASE_ID"],
+          "azure_resource_id" => ENV["PGHERO_AZURE_RESOURCE_ID"]
+        )
+      end
+
+      {
+        "databases" => databases
+      }
     end
 
     # ensure we only have one copy of databases
@@ -210,11 +228,6 @@ module PgHero
       each_database do |database|
         database.clean_space_stats
       end
-    end
-
-    # private
-    def spec_supported?
-      ActiveRecord::VERSION::MAJOR >= 6
     end
 
     # private

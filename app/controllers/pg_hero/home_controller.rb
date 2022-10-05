@@ -85,7 +85,7 @@ module PgHero
       @space_stats_enabled = @database.space_stats_enabled? && !@only_tables
       if @space_stats_enabled
         space_growth = @database.space_growth(days: @days, relation_sizes: @relation_sizes)
-        @growth_bytes_by_relation = Hash[ space_growth.map { |r| [[r[:schema], r[:relation]], r[:growth_bytes]] } ]
+        @growth_bytes_by_relation = space_growth.to_h { |r| [[r[:schema], r[:relation]], r[:growth_bytes]] }
         if params[:sort] == "growth"
           @relation_sizes.sort_by! { |r| s = @growth_bytes_by_relation[[r[:schema], r[:relation]]]; [s ? 0 : 1, -s.to_i, r[:schema], r[:relation]] }
         end
@@ -185,7 +185,7 @@ module PgHero
           @chart2_data = [{name: "Value", data: query_hash_stats.map { |r| [r[:captured_at].change(sec: 0), r[:average_time].round(1)] }, library: chart_library_options}]
           @chart3_data = [{name: "Value", data: query_hash_stats.map { |r| [r[:captured_at].change(sec: 0), r[:calls]] }, library: chart_library_options}]
 
-          @origins = Hash[query_hash_stats.group_by { |r| r[:origin].to_s }.map { |k, v| [k, v.size] }]
+          @origins = query_hash_stats.group_by { |r| r[:origin].to_s }.to_h { |k, v| [k, v.size] }
           @total_count = query_hash_stats.size
         end
 
@@ -193,11 +193,11 @@ module PgHero
         @tables.sort!
 
         if @tables.any?
-          @row_counts = Hash[@database.table_stats(table: @tables).map { |i| [i[:table], i[:estimated_rows]] }]
+          @row_counts = @database.table_stats(table: @tables).to_h { |i| [i[:table], i[:estimated_rows]] }
           @indexes_by_table = @database.indexes.group_by { |i| i[:table] }
         end
       else
-        render_text "Unknown query"
+        render_text "Unknown query", status: :not_found
       end
     end
 
@@ -218,9 +218,9 @@ module PgHero
       @period = (params[:period] || 60.seconds).to_i
 
       if @duration / @period > 1440
-        render_text "Too many data points"
+        render_text "Too many data points", status: :bad_request
       elsif @period % 60 != 0
-        render_text "Period must be a multiple of 60"
+        render_text "Period must be a multiple of 60", status: :bad_request
       end
     end
 
@@ -370,7 +370,11 @@ module PgHero
     end
 
     def reset_query_stats
-      @database.reset_query_stats
+      if @database.server_version_num >= 120000
+        @database.reset_query_stats
+      else
+        @database.reset_instance_query_stats
+      end
       redirect_backward notice: "Query stats reset"
     rescue ActiveRecord::StatementInvalid
       redirect_backward alert: "The database user does not have permission to reset query stats"
@@ -455,12 +459,13 @@ module PgHero
     end
 
     def check_api
-      render_text "No support for Rails API. See https://github.com/pghero/pghero for a standalone app." if Rails.application.config.try(:api_only)
+      if Rails.application.config.try(:api_only)
+        render_text "No support for Rails API. See https://github.com/pghero/pghero for a standalone app.", status:  :internal_server_error
+      end
     end
 
-    # TODO return error status code
-    def render_text(message)
-      render plain: message
+    def render_text(message, status:)
+      render plain: message, status: status
     end
 
     def ensure_query_stats

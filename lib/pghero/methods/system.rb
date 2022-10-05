@@ -5,9 +5,8 @@ module PgHero
         !system_stats_provider.nil?
       end
 
-      # TODO remove defined checks in 3.0
       def system_stats_provider
-        if aws_db_instance_identifier && (defined?(Aws) || defined?(AWS))
+        if aws_db_instance_identifier
           :aws
         elsif gcp_database_id
           :gcp
@@ -42,18 +41,13 @@ module PgHero
 
       def rds_stats(metric_name, duration: nil, period: nil, offset: nil, series: false)
         if system_stats_enabled?
-          aws_options = {region: region}
-          if access_key_id
-            aws_options[:access_key_id] = access_key_id
-            aws_options[:secret_access_key] = secret_access_key
+          aws_options = {region: aws_region}
+          if aws_access_key_id
+            aws_options[:access_key_id] = aws_access_key_id
+            aws_options[:secret_access_key] = aws_secret_access_key
           end
 
-          client =
-            if defined?(Aws)
-              Aws::CloudWatch::Client.new(aws_options)
-            else
-              AWS::CloudWatch.new(aws_options).client
-            end
+          client = Aws::CloudWatch::Client.new(aws_options)
 
           duration = (duration || 1.hour).to_i
           period = (period || 1.minute).to_i

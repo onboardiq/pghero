@@ -14,7 +14,7 @@ Start the dashboard:
 docker run -ti -e DATABASE_URL=postgres://user:password@hostname:5432/dbname -p 8080:8080 ankane/pghero
 ```
 
-Use URL-encoding for any special characters in the username or password. On Mac and Windows, use `host.docker.internal` as the database hostname for databases on your local machine.
+Use URL-encoding for any special characters in the username or password. For databases on the host machine, use `host.docker.internal` as the hostname (on Linux, this requires Docker 20.04 and `--add-host=host.docker.internal:host-gateway`).
 
 Then visit [http://localhost:8080](http://localhost:8080).
 
@@ -187,6 +187,9 @@ databases:
 # Statement timeout for explain
 # explain_timeout_sec: 10
 
+# Visualize URL for explain
+# visualize_url: https://...
+
 # Time zone
 # time_zone: "Pacific Time (US & Canada)"
 ```
@@ -205,7 +208,7 @@ And build your image:
 docker build -t my-pghero .
 ```
 
-If multiple databases are in the same instance and use historical query stats, PgHero should be configured to capture them together.
+With Postgres < 12, if multiple databases are in the same instance and use historical query stats, PgHero should be configured to capture them together.
 
 ```yml
 databases:
@@ -256,6 +259,9 @@ data:
 
     # Statement timeout for explain
     # explain_timeout_sec: 10
+
+    # Visualize URL for explain
+    # visualize_url: https://...
 
     # Time zone
     # time_zone: "Pacific Time (US & Canada)"
